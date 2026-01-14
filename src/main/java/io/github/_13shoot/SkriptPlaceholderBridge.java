@@ -82,10 +82,10 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
         @Override
         public String onRequest(OfflinePlayer player, String identifier) {
 
-            String path = identifier.replace('_', '.');
+            // IMPORTANT: Skript requires full variable name with {}
+            String path = "{" + identifier.replace('_', '.') + "}";
 
             try {
-                // Call with null context (global-safe)
                 Object value = getVariableMethod.invoke(
                         null,
                         path,
@@ -100,5 +100,6 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
 
             return "";
         }
+
     }
 }
