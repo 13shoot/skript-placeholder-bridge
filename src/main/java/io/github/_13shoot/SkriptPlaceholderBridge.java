@@ -8,13 +8,11 @@ import java.lang.reflect.Method;
 
 public class SkriptPlaceholderBridge extends JavaPlugin {
 
-    // Reflection handle to Skript Variables.getVariable(...)
     private static Method getVariableMethod;
 
     @Override
     public void onEnable() {
 
-        // --- Dependency check ---
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") == null) {
             getLogger().severe("PlaceholderAPI not found! Disabling.");
             getServer().getPluginManager().disablePlugin(this);
@@ -27,20 +25,23 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
             return;
         }
 
-        // --- Hook into Skript Variables (Skript 2.13.x compatible) ---
+        // ---- SAFE reflection hook (no Event class reference) ----
         try {
             Class<?> variablesClass =
                     Class.forName("ch.njol.skript.variables.Variables");
-            Class<?> eventClass =
-                    Class.forName("ch.njol.skript.lang.Event");
 
-            // Skript 2.13.x signature:
-            // Variables.getVariable(String name, Event event)
-            getVariableMethod = variablesClass.getMethod(
-                    "getVariable",
-                    String.class,
-                    eventClass
-            );
+            for (Method m : variablesClass.getMethods()) {
+                if (!m.getName().equals("getVariable")) continue;
+                Class<?>[] params = m.getParameterTypes();
+                if (params.length >= 2 && params[0] == String.class) {
+                    getVariableMethod = m;
+                    break;
+                }
+            }
+
+            if (getVariableMethod == null) {
+                throw new NoSuchMethodException("No compatible getVariable method found");
+            }
 
         } catch (Exception e) {
             getLogger().severe("Failed to hook into Skript Variables!");
@@ -49,7 +50,6 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
             return;
         }
 
-        // --- Register PlaceholderAPI expansion ---
         new SkriptExpansion().register();
         getLogger().info("SkriptPlaceholderBridge enabled.");
     }
@@ -61,7 +61,6 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
 
         @Override
         public String getIdentifier() {
-            // %skript_<path>%
             return "skript";
         }
 
@@ -83,23 +82,21 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
         @Override
         public String onRequest(OfflinePlayer player, String identifier) {
 
-            // Convert skript_market.today -> market.today
             String path = identifier.replace('_', '.');
 
-            // --- Global variable only (safe baseline) ---
             try {
+                // Call with null context (global-safe)
                 Object value = getVariableMethod.invoke(
                         null,
                         path,
-                        null   // null Event = global scope
+                        null
                 );
 
                 if (value != null) {
                     return String.valueOf(value);
                 }
 
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
 
             return "";
         }
