@@ -1,12 +1,14 @@
 package io.github._13shoot;
 
-import ch.njol.skript.Skript;
-import ch.njol.skript.variables.Variables;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.lang.reflect.Method;
+
 public class SkriptPlaceholderBridge extends JavaPlugin {
+
+    private static Method getVariableMethod;
 
     @Override
     public void onEnable() {
@@ -15,8 +17,24 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+
         if (getServer().getPluginManager().getPlugin("Skript") == null) {
             getLogger().severe("Skript not found! Disabling.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        try {
+            Class<?> variablesClass = Class.forName("ch.njol.skript.variables.Variables");
+            getVariableMethod = variablesClass.getMethod(
+                    "getVariable",
+                    String.class,
+                    Object.class,
+                    boolean.class
+            );
+        } catch (Exception e) {
+            getLogger().severe("Failed to hook into Skript Variables!");
+            e.printStackTrace();
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
@@ -34,7 +52,7 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
 
         @Override
         public String getAuthor() {
-            return "_13shoot";
+            return "13shoot";
         }
 
         @Override
@@ -49,22 +67,35 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
 
         @Override
         public String onRequest(OfflinePlayer player, String identifier) {
-            // identifier = insurance.status OR market.today.summary etc.
             String path = identifier.replace('_', '.');
 
-            // 1) try player-scoped: {path::uuid}
-            if (player != null) {
-                Object val = Variables.getVariable(path, player, false);
-                if (val != null) {
-                    return String.valueOf(val);
-                }
+            // 1) Try player-scoped variable {path::uuid}
+            if (player != null && getVariableMethod != null) {
+                try {
+                    Object val = getVariableMethod.invoke(
+                            null,
+                            path,
+                            player,
+                            false
+                    );
+                    if (val != null) {
+                        return String.valueOf(val);
+                    }
+                } catch (Exception ignored) {}
             }
 
-            // 2) try global: {path}
-            Object global = Variables.getVariable(path, null, false);
-            if (global != null) {
-                return String.valueOf(global);
-            }
+            // 2) Try global variable {path}
+            try {
+                Object global = getVariableMethod.invoke(
+                        null,
+                        path,
+                        null,
+                        false
+                );
+                if (global != null) {
+                    return String.valueOf(global);
+                }
+            } catch (Exception ignored) {}
 
             return "";
         }
