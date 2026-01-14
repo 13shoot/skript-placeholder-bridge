@@ -13,6 +13,9 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
     @Override
     public void onEnable() {
 
+        // -------------------------------------------------
+        // Dependency check
+        // -------------------------------------------------
         if (getServer().getPluginManager().getPlugin("PlaceholderAPI") == null) {
             getLogger().severe("PlaceholderAPI not found! Disabling.");
             getServer().getPluginManager().disablePlugin(this);
@@ -25,13 +28,17 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
             return;
         }
 
-        // ---- SAFE reflection hook (no Event class reference) ----
+        // -------------------------------------------------
+        // Hook into Skript Variables (safe reflection)
+        // -------------------------------------------------
         try {
             Class<?> variablesClass =
                     Class.forName("ch.njol.skript.variables.Variables");
 
+            // Find compatible getVariable(...) method
             for (Method m : variablesClass.getMethods()) {
                 if (!m.getName().equals("getVariable")) continue;
+
                 Class<?>[] params = m.getParameterTypes();
                 if (params.length >= 2 && params[0] == String.class) {
                     getVariableMethod = m;
@@ -50,6 +57,9 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
             return;
         }
 
+        // -------------------------------------------------
+        // Register PlaceholderAPI expansion
+        // -------------------------------------------------
         new SkriptExpansion().register();
         getLogger().info("SkriptPlaceholderBridge enabled.");
     }
@@ -61,6 +71,7 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
 
         @Override
         public String getIdentifier() {
+            // Usage: %skript_<path>%
             return "skript";
         }
 
@@ -82,24 +93,43 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
         @Override
         public String onRequest(OfflinePlayer player, String identifier) {
 
-            // IMPORTANT: Skript requires full variable name with {}
-            String path = "{" + identifier.replace('_', '.') + "}";
+            // Skript requires full variable format: {path.to.variable}
+            String variableName = "{" + identifier.replace('_', '.') + "}";
 
             try {
-                Object value = getVariableMethod.invoke(
-                        null,
-                        path,
-                        null
-                );
+                Object value;
+
+                // Handle multiple Skript signatures safely
+                if (getVariableMethod.getParameterCount() == 2) {
+                    // getVariable(String, Event)
+                    value = getVariableMethod.invoke(
+                            null,
+                            variableName,
+                            null
+                    );
+
+                } else if (getVariableMethod.getParameterCount() == 3) {
+                    // getVariable(String, Event, boolean)
+                    value = getVariableMethod.invoke(
+                            null,
+                            variableName,
+                            null,
+                            false
+                    );
+
+                } else {
+                    return "";
+                }
 
                 if (value != null) {
                     return String.valueOf(value);
                 }
 
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                // Silent fail to avoid spam in TAB / PAPI refresh
+            }
 
             return "";
         }
-
     }
 }
