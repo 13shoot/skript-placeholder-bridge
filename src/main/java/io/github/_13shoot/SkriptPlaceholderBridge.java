@@ -72,7 +72,7 @@ public class SkriptPlaceholderBridge extends JavaPlugin {
         @Override
         public String getIdentifier() {
             // Usage: %skript_<path>%
-            return "skript";
+            return "skriptvar";
         }
 
         @Override
